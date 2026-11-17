@@ -1,0 +1,8 @@
+services:
+  handwriting-font-gen:
+    build: .
+    ports:
+      - "8099:8000"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

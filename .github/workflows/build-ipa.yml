@@ -1,0 +1,50 @@
+name: Build iPadOS IPA
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "ios-app/**"
+      - ".github/workflows/build-ipa.yml"
+
+jobs:
+  build-ipa:
+    runs-on: macos-14
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: |
+          cd ios-app
+          xcodegen generate
+
+      - name: Build xcarchive (unsigned)
+        run: |
+          cd ios-app
+          xcodebuild archive \
+            -project HandwritingFontGen.xcodeproj \
+            -scheme HandwritingFontGen \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath build/HandwritingFontGen.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: Package IPA
+        run: |
+          mkdir -p ios-app/build/Payload
+          cp -r ios-app/build/HandwritingFontGen.xcarchive/Products/Applications/HandwritingFontGen.app ios-app/build/Payload/
+          cd ios-app/build
+          zip -r HandwritingFontGen.ipa Payload
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HandwritingFontGen-ipa
+          path: ios-app/build/HandwritingFontGen.ipa
+          retention-days: 30
