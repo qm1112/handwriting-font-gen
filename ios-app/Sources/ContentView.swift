@@ -75,8 +75,8 @@ struct ContentView: View {
                         referenceOpacity: referenceOpacity,
                         canvasSize: $canvasSize
                     )
-                    .frame(width: baseSize, height: baseSize)
-                    .scaleEffect(canvasScale)
+                    .frame(width: baseSize * canvasScale, height: baseSize * canvasScale)
+                    .clipped()
                     .frame(width: baseSize * canvasScale, height: baseSize * canvasScale)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 }
