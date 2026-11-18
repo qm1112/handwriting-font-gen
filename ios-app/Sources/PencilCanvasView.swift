@@ -49,7 +49,7 @@ struct PencilCanvasView: View {
         switch referenceFont {
         case .system:
             return .system(size: size, weight: .regular, design: .serif)
-        case .kaiti, .songti, .heiti, .pingfang:
+        case .kaiti, .songti, .heiti, .pingfang, .maShanZheng, .longCang, .yuanti:
             return .custom(referenceFont.rawValue, size: size)
         }
     }

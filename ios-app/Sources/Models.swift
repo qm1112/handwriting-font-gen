@@ -111,6 +111,9 @@ enum ReferenceFontOption: String, CaseIterable, Identifiable {
     case songti = "Songti SC"
     case heiti = "Heiti SC"
     case pingfang = "PingFang SC"
+    case maShanZheng = "MaShanZheng-Regular"
+    case longCang = "LongCang-Regular"
+    case yuanti = "Yuanti SC"
 
     var id: String { rawValue }
 
@@ -121,6 +124,9 @@ enum ReferenceFontOption: String, CaseIterable, Identifiable {
         case .songti: return "宋体 (Songti SC)"
         case .heiti: return "黑体 (Heiti SC)"
         case .pingfang: return "苹方 (PingFang SC)"
+        case .maShanZheng: return "毛笔楷书"
+        case .longCang: return "行草手写"
+        case .yuanti: return "圆体"
         }
     }
 }

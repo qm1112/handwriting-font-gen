@@ -19,6 +19,7 @@ targets:
     deploymentTarget: "16.0"
     sources:
       - path: Sources
+      - path: Fonts
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.silverbullet.HandwritingFontGen
@@ -38,3 +39,6 @@ targets:
         LSRequiresIPhoneOS: true
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
+        UIAppFonts:
+          - MaShanZheng-Regular.ttf
+          - LongCang-Regular.ttf
