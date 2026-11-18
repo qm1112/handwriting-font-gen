@@ -275,7 +275,10 @@ struct ContentView: View {
                         } label: {
                             VStack(spacing: 2) {
                                 ZStack {
-                                    if item.isCompleted, let pathStr = cachedPath, !pathStr.isEmpty {
+                                    if item.isCompleted,
+                                       let pathStr = cachedPath,
+                                       !pathStr.isEmpty,
+                                       SVGPathShape.hasValidPath(pathStr) {
                                         SVGPathShape(svgPath: pathStr, sourceSize: 1000)
                                             .fill(Color.primary)
                                             .frame(width: 20, height: 20)
@@ -643,12 +646,22 @@ private struct SVGPathShape: Shape {
     let svgPath: String
     let sourceSize: CGFloat
 
+    static func hasValidPath(_ svgPath: String) -> Bool {
+        let testRect = CGRect(x: 0, y: 0, width: 20, height: 20)
+        return !buildPath(from: svgPath, in: testRect, sourceSize: 1000).isEmpty
+    }
+
     func path(in rect: CGRect) -> Path {
+        Self.buildPath(from: svgPath, in: rect, sourceSize: sourceSize)
+    }
+
+    static func buildPath(from svgPath: String, in rect: CGRect, sourceSize: CGFloat) -> Path {
         var path = Path()
         let scaleX = rect.width / max(sourceSize, 1)
         let scaleY = rect.height / max(sourceSize, 1)
 
         let dString = extractPathData(from: svgPath)
+        guard !dString.isEmpty else { return path }
         let tokens = tokenize(dString)
         var i = 0
         var currentCmd: Character = "M"
@@ -776,17 +789,29 @@ private struct SVGPathShape: Shape {
         return path
     }
 
-    private func extractPathData(from raw: String) -> String {
+    private static func extractPathData(from raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.contains("<") else { return trimmed }
-        if let range = trimmed.range(of: #"d="([^"]+)""#, options: .regularExpression) {
-            let match = String(trimmed[range])
-            return String(match.dropFirst(3).dropLast(1))
+
+        let pattern = #"d\s*=\s*(?:"([^"]*)"|'([^']*)')"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return ""
         }
-        return trimmed
+        let nsRange = NSRange(trimmed.startIndex..<trimmed.endIndex, in: trimmed)
+        let matches = regex.matches(in: trimmed, options: [], range: nsRange)
+        let parts: [String] = matches.compactMap { match in
+            if let r1 = Range(match.range(at: 1), in: trimmed) {
+                return String(trimmed[r1])
+            }
+            if let r2 = Range(match.range(at: 2), in: trimmed) {
+                return String(trimmed[r2])
+            }
+            return nil
+        }
+        return parts.joined(separator: " ")
     }
 
-    private func tokenize(_ d: String) -> [String] {
+    private static func tokenize(_ d: String) -> [String] {
         var result: [String] = []
         var current = ""
         for ch in d {
