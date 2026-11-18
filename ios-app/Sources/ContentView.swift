@@ -64,22 +64,22 @@ struct ContentView: View {
 
             HStack(spacing: 16) {
                 leftActionRail
-                Spacer(minLength: 0)
 
-                PencilCanvasView(
-                    drawing: $drawing,
-                    pencilOnly: $pencilOnly,
-                    referenceChar: currentChar?.char ?? "",
-                    referenceFont: referenceFont,
-                    referenceOpacity: referenceOpacity,
-                    canvasSize: $canvasSize
-                )
-                .frame(width: 680, height: 680)
-                .scaleEffect(canvasScale)
-                .frame(width: 680 * canvasScale, height: 680 * canvasScale)
-                .padding(.vertical, 12)
-
-                Spacer(minLength: 0)
+                GeometryReader { geo in
+                    let baseSize = max(120, min(geo.size.width - 24, geo.size.height - 24, 680))
+                    PencilCanvasView(
+                        drawing: $drawing,
+                        pencilOnly: $pencilOnly,
+                        referenceChar: currentChar?.char ?? "",
+                        referenceFont: referenceFont,
+                        referenceOpacity: referenceOpacity,
+                        canvasSize: $canvasSize
+                    )
+                    .frame(width: baseSize, height: baseSize)
+                    .scaleEffect(canvasScale)
+                    .frame(width: baseSize * canvasScale, height: baseSize * canvasScale)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                }
 
                 if showRightPanel {
                     Divider()
@@ -261,6 +261,15 @@ struct ContentView: View {
         .background(Color(.systemBackground))
     }
 
+    private func referenceFontFont(size: CGFloat) -> Font {
+        switch referenceFont {
+        case .system:
+            return .system(size: size, weight: .regular, design: .serif)
+        case .kaiti, .songti, .heiti, .pingfang, .maShanZheng, .longCang, .yuanti:
+            return .custom(referenceFont.rawValue, size: size)
+        }
+    }
+
     private var characterPreviewBanner: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
@@ -284,7 +293,7 @@ struct ContentView: View {
                                             .frame(width: 20, height: 20)
                                     } else {
                                         Text(item.char)
-                                            .font(.system(size: 16, weight: item.isCompleted ? .semibold : .regular))
+                                            .font(referenceFontFont(size: 16))
                                             .foregroundColor(item.isCompleted ? .primary : .secondary.opacity(0.45))
                                             .frame(width: 20, height: 20)
                                     }
@@ -790,25 +799,29 @@ private struct SVGPathShape: Shape {
     }
 
     private static func extractPathData(from raw: String) -> String {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.contains("<") else { return trimmed }
-
-        let pattern = #"d\s*=\s*(?:"([^"]*)"|'([^']*)')"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+        let lower = raw.lowercased()
+        if !lower.contains("<svg") && !lower.contains("<path") {
+            if raw.contains("M") || raw.contains("m") {
+                return raw
+            }
             return ""
         }
-        let nsRange = NSRange(trimmed.startIndex..<trimmed.endIndex, in: trimmed)
-        let matches = regex.matches(in: trimmed, options: [], range: nsRange)
-        let parts: [String] = matches.compactMap { match in
-            if let r1 = Range(match.range(at: 1), in: trimmed) {
-                return String(trimmed[r1])
+
+        if lower.contains("<path") {
+            let pattern = #"d\s*=\s*["']([^"']+)["']"#
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+                return ""
             }
-            if let r2 = Range(match.range(at: 2), in: trimmed) {
-                return String(trimmed[r2])
+            let nsRange = NSRange(raw.startIndex..<raw.endIndex, in: raw)
+            let matches = regex.matches(in: raw, options: [], range: nsRange)
+            let parts: [String] = matches.compactMap { match in
+                guard let range = Range(match.range(at: 1), in: raw) else { return nil }
+                return String(raw[range])
             }
-            return nil
+            return parts.joined(separator: " ")
         }
-        return parts.joined(separator: " ")
+
+        return ""
     }
 
     private static func tokenize(_ d: String) -> [String] {
