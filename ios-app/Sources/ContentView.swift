@@ -262,7 +262,7 @@ struct ContentView: View {
     private var characterPreviewBanner: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 5) {
+                LazyHStack(spacing: 0) {
                     ForEach(Array(filteredCharacters.enumerated()), id: \.element.id) { index, item in
                         let isSelected = index == currentIndex
                         let cachedPath = svgPathCache[item.unicodeHex.uppercased()]
@@ -276,15 +276,15 @@ struct ContentView: View {
                                     if item.isCompleted, let pathStr = cachedPath, !pathStr.isEmpty {
                                         SVGPathShape(svgPath: pathStr, sourceSize: 1000)
                                             .fill(Color.primary)
-                                            .frame(width: 22, height: 22)
+                                            .frame(width: 20, height: 20)
                                     } else {
                                         Text(item.char)
                                             .font(.system(size: 16, weight: item.isCompleted ? .semibold : .regular))
                                             .foregroundColor(item.isCompleted ? .primary : .secondary.opacity(0.45))
-                                            .frame(width: 22, height: 22)
+                                            .frame(width: 20, height: 20)
                                     }
                                 }
-                                .frame(width: 28, height: 28)
+                                .frame(width: 22, height: 26)
                                 .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
                                 .cornerRadius(5)
 
