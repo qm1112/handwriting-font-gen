@@ -105,6 +105,33 @@ struct ExportTTFRequest: Codable {
     }
 }
 
+struct TagItem: Codable, Identifiable, Hashable {
+    let tag: String
+    let completed: Int
+
+    var id: String { tag }
+}
+
+struct TagsResponse: Codable {
+    let tags: [TagItem]
+}
+
+struct CharDetailResponse: Codable {
+    let unicodeHex: String?
+    let char: String?
+    let status: String?
+    let strokesJson: [[StrokePointData]]?
+    let mergedSvgPath: String?
+
+    enum CodingKeys: String, CodingKey {
+        case unicodeHex = "unicode_hex"
+        case char
+        case status
+        case strokesJson = "strokes_json"
+        case mergedSvgPath = "merged_svg_path"
+    }
+}
+
 enum ReferenceFontOption: String, CaseIterable, Identifiable {
     case system = "system"
     case kaiti = "Kaiti SC"

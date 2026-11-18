@@ -17,6 +17,9 @@ from db import (
     get_completed_chars,
     get_svgs_dir,
     init_db,
+    list_tags,
+    resolve_svg_path,
+    sanitize_tag,
     upsert_char_completed,
 )
 from ttf_compiler import compile_ttf
@@ -73,6 +76,12 @@ class SaveCharRequest(BaseModel):
 class ExportTTFRequest(BaseModel):
     font_name: str = "MyHandwritingFont"
     weight: Union[str, int] = "regular"
+    tag: str = "default"
+
+
+@app.get("/api/tags")
+def api_get_tags():
+    return {"tags": list_tags()}
 
 
 @app.get("/api/charsets")
@@ -88,8 +97,8 @@ def api_get_charsets():
 
 
 @app.get("/api/progress")
-def api_get_progress():
-    statuses = get_all_statuses()
+def api_get_progress(tag: str = "default"):
+    statuses = get_all_statuses(tag=tag)
     groups: Dict[str, Dict[str, Any]] = {}
     characters: List[Dict[str, Any]] = []
     seen = set()
@@ -126,9 +135,9 @@ def api_get_progress():
 
 
 @app.get("/api/char/{unicode_hex}")
-def api_get_char(unicode_hex: str):
+def api_get_char(unicode_hex: str, tag: str = "default"):
     u_hex = unicode_hex.upper()
-    record = get_char_record(u_hex)
+    record = get_char_record(u_hex, tag=tag)
     if not record:
         info = CHAR_LOOKUP.get(u_hex)
         if not info:
@@ -142,8 +151,8 @@ def api_get_char(unicode_hex: str):
             "updated_at": None,
         }
 
-    svg_file = get_svgs_dir() / f"{u_hex}.svg"
-    svg_path: Optional[str] = str(svg_file) if svg_file.exists() else None
+    svg_file = resolve_svg_path(u_hex, tag=tag)
+    svg_path: Optional[str] = str(svg_file) if svg_file else None
     strokes = record["strokes_json"]
     if isinstance(strokes, str):
         try:
@@ -180,7 +189,7 @@ def _build_svg_document(merged_svg_path: str) -> str:
 
 
 @app.post("/api/char/{unicode_hex}")
-def api_save_char(unicode_hex: str, payload: SaveCharRequest):
+def api_save_char(unicode_hex: str, payload: SaveCharRequest, tag: str = "default"):
     u_hex = unicode_hex.upper()
     info = CHAR_LOOKUP.get(u_hex)
     if info:
@@ -199,7 +208,7 @@ def api_save_char(unicode_hex: str, payload: SaveCharRequest):
         else json.dumps(payload.strokes_json, ensure_ascii=False)
     )
 
-    svgs_dir = get_svgs_dir()
+    svgs_dir = get_svgs_dir(tag=tag)
     svgs_dir.mkdir(parents=True, exist_ok=True)
     svg_file = svgs_dir / f"{u_hex}.svg"
     svg_content = _build_svg_document(payload.merged_svg_path)
@@ -210,6 +219,7 @@ def api_save_char(unicode_hex: str, payload: SaveCharRequest):
         char=ch,
         category=category,
         strokes_json=strokes_str,
+        tag=tag,
     )
 
     return {
@@ -224,7 +234,8 @@ def api_save_char(unicode_hex: str, payload: SaveCharRequest):
 
 @app.post("/api/export/ttf")
 def api_export_ttf(payload: ExportTTFRequest):
-    completed = get_completed_chars()
+    safe_tag = sanitize_tag(payload.tag)
+    completed = get_completed_chars(tag=safe_tag)
     if not completed:
         raise HTTPException(status_code=400, detail="No completed characters available for export")
 
@@ -232,7 +243,8 @@ def api_export_ttf(payload: ExportTTFRequest):
         font_name=payload.font_name,
         weight=payload.weight,
         completed_chars=completed,
-        svgs_dir=get_svgs_dir(),
+        svgs_dir=get_svgs_dir(tag=safe_tag),
+        tag=safe_tag,
     )
 
     filename = f"{payload.font_name}.ttf"

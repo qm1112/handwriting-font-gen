@@ -82,6 +82,7 @@ def compile_ttf(
     weight: str | int,
     completed_chars: List[Dict[str, str]],
     svgs_dir: Path,
+    tag: str = "default",
 ) -> bytes:
     units_per_em = 1000
     ascender = 880
@@ -98,6 +99,10 @@ def compile_ttf(
         u_hex = item["unicode_hex"].upper()
         ch = item["char"]
         svg_file = svgs_dir / f"{u_hex}.svg"
+        if not svg_file.exists() and tag == "default":
+            legacy_file = svgs_dir.parent / f"{u_hex}.svg"
+            if legacy_file.exists():
+                svg_file = legacy_file
         if not svg_file.exists():
             continue
 

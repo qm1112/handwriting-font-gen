@@ -18,7 +18,12 @@ struct ContentView: View {
     @AppStorage("handwriting_canvas_scale") private var canvasScale: Double = 1.0
     @AppStorage("handwriting_reference_font") private var referenceFontRaw: String = ReferenceFontOption.kaiti.rawValue
     @AppStorage("handwriting_reference_opacity") private var referenceOpacity: Double = 0.16
-    @State private var showSettings: Bool = false
+    @AppStorage("handwriting_font_tag") private var fontTag: String = "default"
+    @AppStorage("handwriting_show_right_panel") private var showRightPanel: Bool = true
+
+    @State private var availableTags: [TagItem] = []
+    @State private var tagInput: String = "default"
+    @State private var syncTask: Task<Void, Never>?
 
     @State private var isLoading: Bool = false
     @State private var isSaving: Bool = false
@@ -74,11 +79,34 @@ struct ContentView: View {
 
                 Spacer(minLength: 0)
 
-                if showSettings {
+                if showRightPanel {
                     Divider()
-                    settingsPanel
-                        .frame(width: 300)
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                    VStack(spacing: 0) {
+                        HStack {
+                            Text("设置")
+                                .font(.headline)
+                            Spacer()
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    showRightPanel = false
+                                }
+                            } label: {
+                                Image(systemName: "sidebar.right")
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .help("折叠设置栏")
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(Color(.secondarySystemGroupedBackground))
+
+                        Divider()
+
+                        settingsPanel
+                    }
+                    .frame(width: 300)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
             }
             .padding(.horizontal, 16)
@@ -86,7 +114,11 @@ struct ContentView: View {
             .background(Color(.systemGroupedBackground))
         }
         .task {
+            tagInput = fontTag
             await loadData()
+        }
+        .onChange(of: currentIndex) { _ in
+            Task { await loadCurrentCharIfCompleted() }
         }
         .alert("提示", isPresented: Binding(
             get: { errorMessage != nil },
@@ -116,7 +148,7 @@ struct ContentView: View {
     }
 
     private var topBar: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 12) {
             Picker("字库分组", selection: $selectedCategory) {
                 ForEach(CharsetCategory.allCases) { category in
                     Text(category.displayName).tag(category)
@@ -126,14 +158,18 @@ struct ContentView: View {
             .onChange(of: selectedCategory) { _ in
                 jumpToFirstPendingOrZero()
                 drawing = PKDrawing()
+                Task {
+                    await prefetchCompletedCharsInCurrentGroup()
+                    await loadCurrentCharIfCompleted()
+                }
             }
 
             if let prog = currentGroupProgress {
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     ProgressView(value: Double(prog.completed), total: Double(max(prog.total, 1)))
-                        .frame(width: 120)
+                        .frame(width: 96)
                     Text("\(prog.completed)/\(prog.total) (\(String(format: "%.1f", prog.percentage))%)")
-                        .font(.subheadline.monospacedDigit())
+                        .font(.caption.monospacedDigit())
                         .foregroundColor(.secondary)
                 }
             }
@@ -141,7 +177,7 @@ struct ContentView: View {
             Spacer()
 
             if let item = currentChar {
-                HStack(spacing: 12) {
+                HStack(spacing: 10) {
                     Button {
                         moveCharacter(by: -1)
                     } label: {
@@ -151,17 +187,23 @@ struct ContentView: View {
 
                     HStack(spacing: 8) {
                         Text(item.char)
-                            .font(.title2.bold())
-                        Text("U+\(item.unicodeHex)")
-                            .font(.caption.monospaced())
-                            .foregroundColor(.secondary)
+                            .font(.system(size: 30, weight: .bold))
+                            .frame(minWidth: 34)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("U+\(item.unicodeHex)")
+                                .font(.caption2.monospaced())
+                                .foregroundColor(.secondary)
+                            Text(fontTag)
+                                .font(.caption2)
+                                .foregroundColor(.accentColor)
+                        }
                         if item.isCompleted {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundColor(.green)
                         }
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 3)
                     .background(Color(.secondarySystemBackground))
                     .cornerRadius(8)
 
@@ -176,6 +218,7 @@ struct ContentView: View {
                 ProgressView()
             } else {
                 Text("暂无字符数据")
+                    .font(.caption)
                     .foregroundColor(.secondary)
             }
 
@@ -198,26 +241,28 @@ struct ContentView: View {
                 }
             }
             .buttonStyle(.bordered)
+            .controlSize(.small)
             .disabled(isExporting || isLoading)
 
             Button {
                 withAnimation(.easeInOut(duration: 0.2)) {
-                    showSettings.toggle()
+                    showRightPanel.toggle()
                 }
             } label: {
-                Label("设置", systemImage: showSettings ? "sidebar.right" : "gearshape")
+                Label(showRightPanel ? "收起" : "设置", systemImage: "sidebar.right")
             }
             .buttonStyle(.bordered)
+            .controlSize(.small)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.vertical, 6)
         .background(Color(.systemBackground))
     }
 
     private var characterPreviewBanner: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 6) {
+                LazyHStack(spacing: 5) {
                     ForEach(Array(filteredCharacters.enumerated()), id: \.element.id) { index, item in
                         let isSelected = index == currentIndex
                         let cachedPath = svgPathCache[item.unicodeHex.uppercased()]
@@ -226,27 +271,27 @@ struct ContentView: View {
                             currentIndex = index
                             drawing = PKDrawing()
                         } label: {
-                            VStack(spacing: 3) {
+                            VStack(spacing: 2) {
                                 ZStack {
                                     if item.isCompleted, let pathStr = cachedPath, !pathStr.isEmpty {
                                         SVGPathShape(svgPath: pathStr, sourceSize: 1000)
                                             .fill(Color.primary)
-                                            .frame(width: 28, height: 28)
+                                            .frame(width: 22, height: 22)
                                     } else {
                                         Text(item.char)
-                                            .font(.system(size: 20, weight: item.isCompleted ? .semibold : .regular))
+                                            .font(.system(size: 16, weight: item.isCompleted ? .semibold : .regular))
                                             .foregroundColor(item.isCompleted ? .primary : .secondary.opacity(0.45))
-                                            .frame(width: 28, height: 28)
+                                            .frame(width: 22, height: 22)
                                     }
                                 }
-                                .frame(width: 34, height: 34)
-                                .background(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
-                                .cornerRadius(6)
+                                .frame(width: 28, height: 28)
+                                .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
+                                .cornerRadius(5)
 
                                 Rectangle()
                                     .fill(isSelected ? Color.accentColor : Color.clear)
-                                    .frame(width: 24, height: 3)
-                                    .cornerRadius(1.5)
+                                    .frame(width: 20, height: 2.5)
+                                    .cornerRadius(1.25)
                             }
                         }
                         .buttonStyle(.plain)
@@ -254,8 +299,9 @@ struct ContentView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 6)
+                .padding(.vertical, 4)
             }
+            .frame(height: 40)
             .background(Color(.secondarySystemBackground).opacity(0.6))
             .onChange(of: currentIndex) { _ in
                 if let item = currentChar {
@@ -323,6 +369,45 @@ struct ContentView: View {
 
     private var settingsPanel: some View {
         Form {
+            Section("字体集 Tag") {
+                HStack(spacing: 8) {
+                    TextField("Tag 名称", text: $tagInput)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .onSubmit {
+                            Task { await switchTag(to: tagInput) }
+                        }
+
+                    Button("切换") {
+                        Task { await switchTag(to: tagInput) }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+
+                if !availableTags.isEmpty {
+                    ForEach(availableTags) { item in
+                        Button {
+                            tagInput = item.tag
+                            Task { await switchTag(to: item.tag) }
+                        } label: {
+                            HStack {
+                                Text(item.tag)
+                                    .foregroundColor(.primary)
+                                Spacer()
+                                Text("\(item.completed) 字")
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundColor(.secondary)
+                                if item.tag == fontTag {
+                                    Image(systemName: "checkmark")
+                                        .foregroundColor(.accentColor)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             Section("服务器连接") {
                 TextField("服务器地址", text: $apiClient.baseURL)
                     .textInputAutocapitalization(.never)
@@ -391,17 +476,109 @@ struct ContentView: View {
         }
     }
 
+    private func switchTag(to newTag: String) async {
+        let trimmed = newTag.trimmingCharacters(in: .whitespacesAndNewlines)
+        let target = trimmed.isEmpty ? "default" : trimmed
+        tagInput = target
+        fontTag = target
+        svgPathCache.removeAll()
+        drawing = PKDrawing()
+        await loadData()
+    }
+
     private func loadData() async {
         isLoading = true
         defer { isLoading = false }
         do {
-            let progress = try await apiClient.fetchProgress()
+            async let progressTask = apiClient.fetchProgress(tag: fontTag)
+            async let tagsTask = apiClient.fetchTags()
+            let progress = try await progressTask
             allCharacters = progress.characters
             groupProgress = progress.groups
+            if let tagsResp = try? await tagsTask {
+                availableTags = tagsResp.tags
+            }
             jumpToFirstPendingOrZero()
+            await prefetchCompletedCharsInCurrentGroup()
+            await loadCurrentCharIfCompleted()
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func prefetchCompletedCharsInCurrentGroup() async {
+        syncTask?.cancel()
+        let completed = filteredCharacters.filter { $0.isCompleted }
+        guard !completed.isEmpty else { return }
+        let tag = fontTag
+        let task = Task {
+            await withTaskGroup(of: (String, String?).self) { group in
+                for item in completed {
+                    let hex = item.unicodeHex.uppercased()
+                    if svgPathCache[hex] != nil { continue }
+                    group.addTask {
+                        let detail = try? await apiClient.fetchChar(hex: hex, tag: tag)
+                        return (hex, detail?.mergedSvgPath)
+                    }
+                }
+                for await (hex, svgPath) in group {
+                    if Task.isCancelled { break }
+                    if let path = svgPath, !path.isEmpty {
+                        svgPathCache[hex] = path
+                    }
+                }
+            }
+        }
+        syncTask = task
+        await task.value
+    }
+
+    private func loadCurrentCharIfCompleted() async {
+        guard let item = currentChar, item.isCompleted else { return }
+        let hex = item.unicodeHex.uppercased()
+        do {
+            let detail = try await apiClient.fetchChar(hex: hex, tag: fontTag)
+            if let path = detail.mergedSvgPath, !path.isEmpty {
+                svgPathCache[hex] = path
+            }
+            if currentChar?.unicodeHex.uppercased() == hex,
+               drawing.strokes.isEmpty,
+               let strokesJson = detail.strokesJson,
+               !strokesJson.isEmpty {
+                drawing = makePKDrawing(from: strokesJson, canvasSize: canvasSize)
+            }
+        } catch {
+            // 忽略单个字符拉取失败，避免打断书写流程
+        }
+    }
+
+    private func makePKDrawing(from strokesJson: [[StrokePointData]], canvasSize: CGSize) -> PKDrawing {
+        let width = max(canvasSize.width, 1)
+        let height = max(canvasSize.height, 1)
+        let ink = PKInk(.pen, color: .black)
+        var pkStrokes: [PKStroke] = []
+
+        for stroke in strokesJson {
+            guard !stroke.isEmpty else { continue }
+            var points: [PKStrokePoint] = []
+            for (idx, pt) in stroke.enumerated() {
+                let loc = CGPoint(x: pt.x / 1000.0 * width, y: pt.y / 1000.0 * height)
+                let strokeWidth = max(CGFloat(pt.w) / 1000.0 * width, 1.0)
+                let point = PKStrokePoint(
+                    location: loc,
+                    timeOffset: TimeInterval(idx) * 0.01,
+                    size: CGSize(width: strokeWidth, height: strokeWidth),
+                    opacity: 1.0,
+                    force: 1.0,
+                    azimuth: 0,
+                    altitude: .pi / 2
+                )
+                points.append(point)
+            }
+            let path = PKStrokePath(controlPoints: points, creationDate: Date())
+            pkStrokes.append(PKStroke(ink: ink, path: path))
+        }
+        return PKDrawing(strokes: pkStrokes)
     }
 
     private func saveAndNext() async {
@@ -414,15 +591,19 @@ struct ContentView: View {
             try await apiClient.saveChar(
                 hex: item.unicodeHex,
                 strokesJson: converted.strokesJson,
-                mergedSvgPath: converted.mergedSvgPath
+                mergedSvgPath: converted.mergedSvgPath,
+                tag: fontTag
             )
             svgPathCache[item.unicodeHex.uppercased()] = converted.mergedSvgPath
             if let globalIdx = allCharacters.firstIndex(where: { $0.id == item.id }) {
                 allCharacters[globalIdx].status = "completed"
             }
-            if let prog = try? await apiClient.fetchProgress() {
+            if let prog = try? await apiClient.fetchProgress(tag: fontTag) {
                 allCharacters = prog.characters
                 groupProgress = prog.groups
+            }
+            if let tagsResp = try? await apiClient.fetchTags() {
+                availableTags = tagsResp.tags
             }
             statusMessage = "已保存 \(item.char)"
             drawing = PKDrawing()
@@ -438,7 +619,7 @@ struct ContentView: View {
         isExporting = true
         defer { isExporting = false }
         do {
-            let fileURL = try await apiClient.exportTTF(fontName: exportFontName)
+            let fileURL = try await apiClient.exportTTF(fontName: exportFontName, tag: fontTag)
             exportedFileURL = fileURL
         } catch {
             errorMessage = error.localizedDescription
