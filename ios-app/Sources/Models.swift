@@ -94,3 +94,33 @@ struct SaveCharResponse: Codable {
         case unicodeHex = "unicode_hex"
     }
 }
+
+struct ExportTTFRequest: Codable {
+    let fontName: String
+    let weight: String
+
+    enum CodingKeys: String, CodingKey {
+        case fontName = "font_name"
+        case weight
+    }
+}
+
+enum ReferenceFontOption: String, CaseIterable, Identifiable {
+    case system = "system"
+    case kaiti = "Kaiti SC"
+    case songti = "Songti SC"
+    case heiti = "Heiti SC"
+    case pingfang = "PingFang SC"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .system: return "系统默认"
+        case .kaiti: return "楷体 (Kaiti SC)"
+        case .songti: return "宋体 (Songti SC)"
+        case .heiti: return "黑体 (Heiti SC)"
+        case .pingfang: return "苹方 (PingFang SC)"
+        }
+    }
+}

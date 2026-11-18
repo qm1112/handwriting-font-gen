@@ -84,6 +84,29 @@ final class APIClient: ObservableObject {
         try validate(response: response, data: data)
     }
 
+    func exportTTF(fontName: String, weight: String = "regular") async throws -> URL {
+        let url = try makeURL(path: "/api/export/ttf")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let trimmedName = fontName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalName = trimmedName.isEmpty ? "MyHandwriting" : trimmedName
+        let payload = ExportTTFRequest(fontName: finalName, weight: weight)
+        request.httpBody = try JSONEncoder().encode(payload)
+
+        let (data, response) = try await session.data(for: request)
+        try validate(response: response, data: data)
+
+        let sanitized = finalName.replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "\\", with: "_")
+            .replacingOccurrences(of: ":", with: "_")
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(sanitized).ttf")
+        try data.write(to: tempURL, options: .atomic)
+        return tempURL
+    }
+
     private func validate(response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse else { return }
         guard (200...299).contains(http.statusCode) else {

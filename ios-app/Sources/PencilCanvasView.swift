@@ -5,6 +5,7 @@ struct PencilCanvasView: View {
     @Binding var drawing: PKDrawing
     @Binding var pencilOnly: Bool
     let referenceChar: String
+    let referenceFont: ReferenceFontOption
     let referenceOpacity: Double
     @Binding var canvasSize: CGSize
 
@@ -16,9 +17,9 @@ struct PencilCanvasView: View {
                 MiZiGeGridView()
                     .stroke(Color.gray.opacity(0.32), style: StrokeStyle(lineWidth: 1, dash: [6, 5]))
 
-                if !referenceChar.isEmpty && referenceOpacity > 0.01 {
+                if !referenceChar.isEmpty && referenceOpacity > 0.001 {
                     Text(referenceChar)
-                        .font(.system(size: min(geo.size.width, geo.size.height) * 0.72, weight: .regular, design: .serif))
+                        .font(referenceFontFont(size: min(geo.size.width, geo.size.height) * 0.72))
                         .foregroundColor(.black.opacity(referenceOpacity))
                         .allowsHitTesting(false)
                 }
@@ -42,6 +43,15 @@ struct PencilCanvasView: View {
             }
         }
         .aspectRatio(1, contentMode: .fit)
+    }
+
+    private func referenceFontFont(size: CGFloat) -> Font {
+        switch referenceFont {
+        case .system:
+            return .system(size: size, weight: .regular, design: .serif)
+        case .kaiti, .songti, .heiti, .pingfang:
+            return .custom(referenceFont.rawValue, size: size)
+        }
     }
 }
 
