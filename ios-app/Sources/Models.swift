@@ -76,6 +76,27 @@ struct SaveCharRequest: Codable {
     enum CodingKeys: String, CodingKey {
         case strokesJson = "strokes_json"
         case mergedSvgPath = "merged_svg_path"
+        case svgPath = "svg_path"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        unicodeHex = try container.decodeIfPresent(String.self, forKey: .unicodeHex)
+        char = try container.decodeIfPresent(String.self, forKey: .char)
+        status = try container.decodeIfPresent(String.self, forKey: .status)
+        strokesJson = try container.decodeIfPresent([[StrokePointData]].self, forKey: .strokesJson)
+        let merged = try container.decodeIfPresent(String.self, forKey: .mergedSvgPath)
+        let legacy = try container.decodeIfPresent(String.self, forKey: .svgPath)
+        mergedSvgPath = (merged?.isEmpty == false) ? merged : legacy
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(unicodeHex, forKey: .unicodeHex)
+        try container.encodeIfPresent(char, forKey: .char)
+        try container.encodeIfPresent(status, forKey: .status)
+        try container.encodeIfPresent(strokesJson, forKey: .strokesJson)
+        try container.encodeIfPresent(mergedSvgPath, forKey: .mergedSvgPath)
     }
 }
 
@@ -129,6 +150,27 @@ struct CharDetailResponse: Codable {
         case status
         case strokesJson = "strokes_json"
         case mergedSvgPath = "merged_svg_path"
+        case svgPath = "svg_path"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        unicodeHex = try container.decodeIfPresent(String.self, forKey: .unicodeHex)
+        char = try container.decodeIfPresent(String.self, forKey: .char)
+        status = try container.decodeIfPresent(String.self, forKey: .status)
+        strokesJson = try container.decodeIfPresent([[StrokePointData]].self, forKey: .strokesJson)
+        let merged = try container.decodeIfPresent(String.self, forKey: .mergedSvgPath)
+        let svg = try container.decodeIfPresent(String.self, forKey: .svgPath)
+        mergedSvgPath = merged ?? svg
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(unicodeHex, forKey: .unicodeHex)
+        try container.encodeIfPresent(char, forKey: .char)
+        try container.encodeIfPresent(status, forKey: .status)
+        try container.encodeIfPresent(strokesJson, forKey: .strokesJson)
+        try container.encodeIfPresent(mergedSvgPath, forKey: .mergedSvgPath)
     }
 }
 

@@ -74,7 +74,9 @@ struct ContentView: View {
                     referenceOpacity: referenceOpacity,
                     canvasSize: $canvasSize
                 )
-                .frame(maxWidth: 680 * canvasScale, maxHeight: 680 * canvasScale)
+                .frame(width: 680, height: 680)
+                .scaleEffect(canvasScale)
+                .frame(width: 680 * canvasScale, height: 680 * canvasScale)
                 .padding(.vertical, 12)
 
                 Spacer(minLength: 0)
@@ -646,9 +648,12 @@ private struct SVGPathShape: Shape {
         let scaleX = rect.width / max(sourceSize, 1)
         let scaleY = rect.height / max(sourceSize, 1)
 
-        let tokens = tokenize(svgPath)
+        let dString = extractPathData(from: svgPath)
+        let tokens = tokenize(dString)
         var i = 0
         var currentCmd: Character = "M"
+        var currentPoint = CGPoint.zero
+        var subpathStart = CGPoint.zero
 
         while i < tokens.count {
             let token = tokens[i]
@@ -657,6 +662,7 @@ private struct SVGPathShape: Shape {
                 i += 1
                 if currentCmd == "Z" || currentCmd == "z" {
                     path.closeSubpath()
+                    currentPoint = subpathStart
                 }
                 continue
             }
@@ -664,15 +670,40 @@ private struct SVGPathShape: Shape {
             switch currentCmd {
             case "M":
                 if i + 1 < tokens.count, let x = Double(tokens[i]), let y = Double(tokens[i + 1]) {
-                    path.move(to: CGPoint(x: CGFloat(x) * scaleX, y: CGFloat(y) * scaleY))
+                    let pt = CGPoint(x: CGFloat(x) * scaleX, y: CGFloat(y) * scaleY)
+                    path.move(to: pt)
+                    currentPoint = pt
+                    subpathStart = pt
                     i += 2
                     currentCmd = "L"
                 } else {
                     i += 1
                 }
+            case "m":
+                if i + 1 < tokens.count, let dx = Double(tokens[i]), let dy = Double(tokens[i + 1]) {
+                    let pt = CGPoint(x: currentPoint.x + CGFloat(dx) * scaleX, y: currentPoint.y + CGFloat(dy) * scaleY)
+                    path.move(to: pt)
+                    currentPoint = pt
+                    subpathStart = pt
+                    i += 2
+                    currentCmd = "l"
+                } else {
+                    i += 1
+                }
             case "L":
                 if i + 1 < tokens.count, let x = Double(tokens[i]), let y = Double(tokens[i + 1]) {
-                    path.addLine(to: CGPoint(x: CGFloat(x) * scaleX, y: CGFloat(y) * scaleY))
+                    let pt = CGPoint(x: CGFloat(x) * scaleX, y: CGFloat(y) * scaleY)
+                    path.addLine(to: pt)
+                    currentPoint = pt
+                    i += 2
+                } else {
+                    i += 1
+                }
+            case "l":
+                if i + 1 < tokens.count, let dx = Double(tokens[i]), let dy = Double(tokens[i + 1]) {
+                    let pt = CGPoint(x: currentPoint.x + CGFloat(dx) * scaleX, y: currentPoint.y + CGFloat(dy) * scaleY)
+                    path.addLine(to: pt)
+                    currentPoint = pt
                     i += 2
                 } else {
                     i += 1
@@ -681,10 +712,26 @@ private struct SVGPathShape: Shape {
                 if i + 3 < tokens.count,
                    let cx = Double(tokens[i]), let cy = Double(tokens[i + 1]),
                    let x = Double(tokens[i + 2]), let y = Double(tokens[i + 3]) {
+                    let pt = CGPoint(x: CGFloat(x) * scaleX, y: CGFloat(y) * scaleY)
                     path.addQuadCurve(
-                        to: CGPoint(x: CGFloat(x) * scaleX, y: CGFloat(y) * scaleY),
+                        to: pt,
                         control: CGPoint(x: CGFloat(cx) * scaleX, y: CGFloat(cy) * scaleY)
                     )
+                    currentPoint = pt
+                    i += 4
+                } else {
+                    i += 1
+                }
+            case "q":
+                if i + 3 < tokens.count,
+                   let dcx = Double(tokens[i]), let dcy = Double(tokens[i + 1]),
+                   let dx = Double(tokens[i + 2]), let dy = Double(tokens[i + 3]) {
+                    let pt = CGPoint(x: currentPoint.x + CGFloat(dx) * scaleX, y: currentPoint.y + CGFloat(dy) * scaleY)
+                    path.addQuadCurve(
+                        to: pt,
+                        control: CGPoint(x: currentPoint.x + CGFloat(dcx) * scaleX, y: currentPoint.y + CGFloat(dcy) * scaleY)
+                    )
+                    currentPoint = pt
                     i += 4
                 } else {
                     i += 1
@@ -694,11 +741,29 @@ private struct SVGPathShape: Shape {
                    let c1x = Double(tokens[i]), let c1y = Double(tokens[i + 1]),
                    let c2x = Double(tokens[i + 2]), let c2y = Double(tokens[i + 3]),
                    let x = Double(tokens[i + 4]), let y = Double(tokens[i + 5]) {
+                    let pt = CGPoint(x: CGFloat(x) * scaleX, y: CGFloat(y) * scaleY)
                     path.addCurve(
-                        to: CGPoint(x: CGFloat(x) * scaleX, y: CGFloat(y) * scaleY),
+                        to: pt,
                         control1: CGPoint(x: CGFloat(c1x) * scaleX, y: CGFloat(c1y) * scaleY),
                         control2: CGPoint(x: CGFloat(c2x) * scaleX, y: CGFloat(c2y) * scaleY)
                     )
+                    currentPoint = pt
+                    i += 6
+                } else {
+                    i += 1
+                }
+            case "c":
+                if i + 5 < tokens.count,
+                   let dc1x = Double(tokens[i]), let dc1y = Double(tokens[i + 1]),
+                   let dc2x = Double(tokens[i + 2]), let dc2y = Double(tokens[i + 3]),
+                   let dx = Double(tokens[i + 4]), let dy = Double(tokens[i + 5]) {
+                    let pt = CGPoint(x: currentPoint.x + CGFloat(dx) * scaleX, y: currentPoint.y + CGFloat(dy) * scaleY)
+                    path.addCurve(
+                        to: pt,
+                        control1: CGPoint(x: currentPoint.x + CGFloat(dc1x) * scaleX, y: currentPoint.y + CGFloat(dc1y) * scaleY),
+                        control2: CGPoint(x: currentPoint.x + CGFloat(dc2x) * scaleX, y: currentPoint.y + CGFloat(dc2y) * scaleY)
+                    )
+                    currentPoint = pt
                     i += 6
                 } else {
                     i += 1
@@ -709,6 +774,16 @@ private struct SVGPathShape: Shape {
         }
 
         return path
+    }
+
+    private func extractPathData(from raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.contains("<") else { return trimmed }
+        if let range = trimmed.range(of: #"d="([^"]+)""#, options: .regularExpression) {
+            let match = String(trimmed[range])
+            return String(match.dropFirst(3).dropLast(1))
+        }
+        return trimmed
     }
 
     private func tokenize(_ d: String) -> [String] {
