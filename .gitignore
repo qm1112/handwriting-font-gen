@@ -6,3 +6,5 @@ backend/*.db
 ios-app/build/
 ios-app/*.xcodeproj/
 .DS_Store
+
+dist-ipa/
